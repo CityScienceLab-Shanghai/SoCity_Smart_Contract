@@ -1,5 +1,6 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.7;
+import "./library/ABDKMathQuad.sol";//引入ABDK库
 
 contract vote{
     
@@ -8,13 +9,10 @@ contract vote{
     int bus_cost = 105; //g/km
     int heavy_rail_cost = 41; //g/km
 
-    //Q1: 需不需要delegate？
     //Q2: 是不是应该一部分移动到前端？比如：如果一个用户得到了当前计算的target_carbon_allowance
     //需要自己计划下一周怎么规划自己的交通工具的km数，那么用户可能会不断修改自己下周规划的km数，
     //或者他某一种类的交通工具km数输入错误，所以他需要重新输入等等情况，那么这一部分肯定不需要上链，而是用户自己模拟
     //Q3: 文档中计算的 Achievement: Decreased allowance percentage(%)中的权重计算一直都是固定的，应该是需要变化的
-    //Q4: 精度问题，无法实现小数(y一定要注意小数，如果a = 0.x, 那么直接会截断变成0)
-    //四个地方需要改: 新手保护期，前端
 
     //只能运行16个 variables
     struct Voter{
@@ -61,11 +59,11 @@ contract vote{
     //msg.sender: 调用该contract的人
     constructor() public {
         chairperson = msg.sender;
-        suggestAllowance[0] = 1523;
-        suggestAllowance[1] = 1823;
-        suggestAllowance[2] = 2123;
-        suggestAllowance[3] = 2423;
-        suggestAllowance[4] = 2723;
+        suggestAllowance[0] = 15230;
+        suggestAllowance[1] = 18230;
+        suggestAllowance[2] = 21230;
+        suggestAllowance[3] = 24230;
+        suggestAllowance[4] = 27230;
     }
 
 
@@ -152,6 +150,7 @@ contract vote{
         //还没有初始化
         require(voters[msg.sender].level != 0,"you have not initialize!");
         require(voters[msg.sender].isVoted == 0, "you cannot operate this function");
+
         //得到总花费km数
         int sum = (sender.sensor_travel_mode.passenger_cars+
                     sender.sensor_travel_mode.motocycle+
@@ -159,29 +158,24 @@ contract vote{
                     sender.sensor_travel_mode.heavy_rail+
                     sender.sensor_travel_mode.walking+
                     sender.sensor_travel_mode.cycling);
-        
-        require(sum != 0, "your sensor is empty, try to contact the chairperson XXXXXX");
-
         //为什么索引为uint
-        int carbon_quota = (suggestAllowance[sender.level]/10)*sum;
         int carbon_cost = (sender.sensor_travel_mode.passenger_cars*car_cost+
                             sender.sensor_travel_mode.motocycle*moto_cycle_cost+
                             sender.sensor_travel_mode.bus*bus_cost+
                             sender.sensor_travel_mode.heavy_rail*heavy_rail_cost);
         
-        //这些参数一定会>0
-        int carbon_cost_per_week = carbon_cost/sum;  //sensor检测到的你这周的碳排放
-        int residual_carbon_quota = (carbon_quota - carbon_cost)/1000;
-
-        // //这周sensor检测到的碳排放小于上周用户自己制定的碳排放量，那么用户得到奖励
-        // if(carbon_cost_per_week < sender.target_carbon_allowance){
-        //     sender.governanceToken += sender.Locked_governanceToken; //得到新的governanceToken的奖励
-        // }
-        // sender.Locked_governanceToken = 0; //清零
-        sender.carbon_cost_per_week = carbon_cost_per_week; //记录sensor检测到的你这周的碳排放
-        sender.carbon_coin += residual_carbon_quota; //1kg = 1coin，但是solidity没有小数,这样计算会直接少了精度，是否需要最小单位？
+        bytes16 carbon_cost_per_week = ABDKMathQuad.div(ABDKMathQuad.fromInt(carbon_cost),ABDKMathQuad.fromInt(sum));
+        bytes16 carbon_quota = ABDKMathQuad.mul(
+            ABDKMathQuad.div(ABDKMathQuad.fromInt(suggestAllowance[sender.level]),ABDKMathQuad.fromInt(100)),
+            ABDKMathQuad.fromInt(sum)
+        );
+        bytes16 residual_carbon_quota = ABDKMathQuad.div(
+        ABDKMathQuad.sub(
+            carbon_quota, ABDKMathQuad.fromInt(carbon_cost)),
+        ABDKMathQuad.fromInt(1000)); //小数？
+        sender.carbon_cost_per_week = ABDKMathQuad.toInt(carbon_cost_per_week);
+        sender.carbon_coin += ABDKMathQuad.toInt(residual_carbon_quota); //1kg = 1coin，但是solidity没有小数,这样计算会直接少了精度，是否需要最小单位？
         sender.isVoted++; //表示该用户执行过该方法
-        
 
     }
 
@@ -204,39 +198,43 @@ contract vote{
         // require(sender.expect_travel_mode.walking != 0, "please input your walking");
         // require(sender.expect_travel_mode.cycling != 0, "please input your cycling");
 
-        int sum = sender.expect_travel_mode.passenger_cars+
-                    sender.expect_travel_mode.motocycle+
-                    sender.expect_travel_mode.bus+
-                    sender.expect_travel_mode.heavy_rail+
-                    sender.expect_travel_mode.walking+
-                    sender.expect_travel_mode.cycling;
-
-        require(sum != 0, "your expect travel mode is empty, please go back to check input");
-
-        //用户自己投票的下周的碳排放量
-        int voting_carbon_allowance = (sender.expect_travel_mode.passenger_cars*car_cost+
+        bytes16 voting_carbon_allowance = ABDKMathQuad.div(ABDKMathQuad.fromInt(sender.expect_travel_mode.passenger_cars*car_cost+
                                     sender.expect_travel_mode.motocycle*moto_cycle_cost+
                                     sender.expect_travel_mode.bus*bus_cost+
-                                    sender.expect_travel_mode.heavy_rail*heavy_rail_cost)/100;
-
-        int a = 0;
-        int b = 0;
+                                    sender.expect_travel_mode.heavy_rail*heavy_rail_cost),ABDKMathQuad.fromInt(100));
+        
         //第一次投票，没有之前的数据
         if(sender.target_carbon_allowance == 0){
             //使用一开始的level级
             //得到下周的decreasedAllowancePercentage_是否下降或者上升
             //正数代表上升,负数代表下降
-            //不确定相除是否为0.x, 那么就放大倍数
-            a = (suggestAllowance[sender.level]/10) - voting_carbon_allowance;
-            b = a*100/(suggestAllowance[sender.level]/10); 
-            sender.decreasedAllowancePercentage_ = b;
+            //这个地方需要修改一下，因为精度不够，有误差。
+            bytes16 a = ABDKMathQuad.sub(
+            ABDKMathQuad.div(ABDKMathQuad.fromInt(suggestAllowance[sender.level]),
+            ABDKMathQuad.fromInt(100)),
+            voting_carbon_allowance);
+            bytes16 b = ABDKMathQuad.div(
+                ABDKMathQuad.mul(a,ABDKMathQuad.fromInt(100)),
+                ABDKMathQuad.div(
+                    ABDKMathQuad.fromInt(suggestAllowance[sender.level]),
+                    ABDKMathQuad.fromInt(100)
+                )
+            );
+            sender.decreasedAllowancePercentage_ = ABDKMathQuad.toInt(b);
+            //sender.decreasedAllowancePercentage_ = (((suggestAllowance[sender.level]/100) - voting_carbon_allowance)/(suggestAllowance[sender.level]/100))*100;
             
         }else{
             //并非第一次投票，那么需要target_carbon_allowance, 还有已经存在的governanceToken来计算这一周的碳消耗
-            //得到下周的decreasedAllowancePercentage_是否下降或者上升
-            a = sender.target_carbon_allowance - voting_carbon_allowance;
-            b = a*100/sender.target_carbon_allowance;
-            sender.decreasedAllowancePercentage_ = b;
+            sender.decreasedAllowancePercentage_ = ABDKMathQuad.toInt(
+            ABDKMathQuad.mul(
+                ABDKMathQuad.div(
+                    ABDKMathQuad.sub(
+                        ABDKMathQuad.fromInt(sender.target_carbon_allowance),
+                        voting_carbon_allowance),
+                    ABDKMathQuad.fromInt(sender.target_carbon_allowance)
+                ), ABDKMathQuad.fromInt(100)
+            ));
+            //((sender.target_carbon_allowance - voting_carbon_allowance)/sender.target_carbon_allowance)*100;
         }
 
         //allowance-settlement-voting 位置的 decreasedAllowancePercentage
@@ -261,52 +259,78 @@ contract vote{
 
         //计算achievement位置的 decreasedAllowancePercentage
         //每个用户weight的计算方法也是根据governance_token来计算的
-        int decreasedAllowancePercentage_ = 0;
-
-
-        int sumGovernanceToken = 0; //得到总的投票人数的token
+        bytes16 decreasedAllowancePercentage_ = 0;
+        bytes16 sumGovernanceToken = 0; //得到总的投票人数的token
         //这里i要设置为uint,why?
         //难道是.length的问题?
         for(uint i = 0; i < voters_.length; i++){
-            sumGovernanceToken += voters_[i].governanceToken;
+            sumGovernanceToken = ABDKMathQuad.add(sumGovernanceToken,
+                ABDKMathQuad.fromInt(voters_[i].governanceToken));
         }
+
         for(uint i = 0; i < voters_.length; i++){
-            //算每个投票成员的权重
-            decreasedAllowancePercentage_ += voters_[i].governanceToken*voters_[i].decreasedAllowancePercentage_;
+            //算每个老手投票成员的权重
+            decreasedAllowancePercentage_ = ABDKMathQuad.add(decreasedAllowancePercentage_,
+                ABDKMathQuad.mul(
+                    ABDKMathQuad.fromInt(voters_[i].governanceToken),
+                    ABDKMathQuad.fromInt(voters_[i].decreasedAllowancePercentage_)
+                )
+            );
         }
-        decreasedAllowancePercentage_/=sumGovernanceToken;
 
-        // for(uint i = 0; i < decreasedAllowancePercentage.length; i++){
-        //     //这里设置的是每个用户的weight = 1; 后期需要根据每个用户的weight来进行计算,还需要修改这一部分
-        //     decreasedAllowancePercentage_ += decreasedAllowancePercentage[i];
-        // }
-        // //如果和weight有关，那么之后这一部分会修改
-        // decreasedAllowancePercentage_/=int(decreasedAllowancePercentage.length);
+        decreasedAllowancePercentage_ = ABDKMathQuad.div(decreasedAllowancePercentage_,sumGovernanceToken);
 
-
-
-        int next_week_carbon_allowance = 0;
-        int decreased_allowance = 0;
-        int residual_allowance = 0;
+        bytes16 next_week_carbon_allowance;
+        bytes16 decreased_allowance;
+        bytes16 residual_allowance;
         //第一次投票，没有之前的数据
         if(sender.target_carbon_allowance == 0){
             //得到下周的carbon_allowance
-            //防止a为0.x, 那么直接就会变成0
-            next_week_carbon_allowance = suggestAllowance[sender.level]/10 - ((suggestAllowance[sender.level]/10)*decreasedAllowancePercentage_)/100;
-            decreased_allowance = (suggestAllowance[sender.level]/10) - next_week_carbon_allowance;
-            residual_allowance = (suggestAllowance[sender.level]/10) - sender.carbon_cost_per_week;
+            next_week_carbon_allowance = ABDKMathQuad.mul(
+                ABDKMathQuad.div(ABDKMathQuad.fromInt(suggestAllowance[sender.level])
+                ,ABDKMathQuad.fromInt(100)),
+                ABDKMathQuad.sub(ABDKMathQuad.fromInt(1),
+                ABDKMathQuad.div(
+                    decreasedAllowancePercentage_,
+                    ABDKMathQuad.fromInt(100))
+                )
+            );
+
+            decreased_allowance = ABDKMathQuad.sub(
+                 ABDKMathQuad.div(ABDKMathQuad.fromInt(suggestAllowance[sender.level])
+                ,ABDKMathQuad.fromInt(100)),next_week_carbon_allowance
+            );
+            
+            residual_allowance = ABDKMathQuad.sub(
+                 ABDKMathQuad.div(ABDKMathQuad.fromInt(suggestAllowance[sender.level])
+                ,ABDKMathQuad.fromInt(100)),ABDKMathQuad.fromInt(sender.carbon_cost_per_week)
+            );
         }else{
             //并非第一次投票，那么需要target_carbon_allowance, 还有已经存在的governanceToken来计算这一周的碳消耗
-            next_week_carbon_allowance = sender.target_carbon_allowance - (sender.target_carbon_allowance*decreasedAllowancePercentage_)/100;
-            decreased_allowance = sender.target_carbon_allowance - next_week_carbon_allowance;
-            residual_allowance = sender.target_carbon_allowance - sender.carbon_cost_per_week;
+            next_week_carbon_allowance = ABDKMathQuad.mul(
+                ABDKMathQuad.fromInt(sender.target_carbon_allowance),
+                ABDKMathQuad.sub(ABDKMathQuad.fromInt(1),
+                    ABDKMathQuad.div(
+                        decreasedAllowancePercentage_,
+                        ABDKMathQuad.fromInt(100)
+                    )
+                )
+            );
+
+            decreased_allowance = ABDKMathQuad.sub(
+                ABDKMathQuad.fromInt(sender.target_carbon_allowance),
+                next_week_carbon_allowance
+            );
+
+            residual_allowance = ABDKMathQuad.sub(
+                ABDKMathQuad.fromInt(sender.target_carbon_allowance),
+                ABDKMathQuad.fromInt(sender.carbon_cost_per_week)
+            );
         }
         
-        sender.target_carbon_allowance = next_week_carbon_allowance; 
-        //之后需要修改
+        sender.target_carbon_allowance = ABDKMathQuad.toInt(next_week_carbon_allowance); 
         //得到新的governanceToken
-        int governanceToken = (residual_allowance + decreased_allowance);
-        sender.governanceToken += governanceToken; //重新产生的governanceToken
+        sender.governanceToken += ABDKMathQuad.toInt(ABDKMathQuad.add(residual_allowance, decreased_allowance));
         sender.isVoted++; //表示该用户执行过该方法，执行到这这周就不能随便改动了。
         sender.round++; //这周投票结束
 
@@ -322,12 +346,6 @@ contract vote{
         require(msg.sender == chairperson, "only chairperson can use this function");
         v.isVoted = 0; //设置为0
         v.carbon_cost_per_week = 0;
-        // for(uint i = 0; i < decreasedAllowancePercentage.length; i++){
-        //     if(decreasedAllowancePercentage[i] == v.decreasedAllowancePercentage_){
-        //         decreasedAllowancePercentage[i] = 0; //消除该用户上一周的值
-        //     }
-        // }
-        //delete decreasedAllowancePercentage; //直接删除
         delete voters_;
         v.decreasedAllowancePercentage_ = 0; //设置为0
         delete v.sensor_travel_mode;
