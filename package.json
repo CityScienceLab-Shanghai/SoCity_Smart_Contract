@@ -1,0 +1,21 @@
+{
+  "name": "hardhat-project",
+  "scripts": {
+    "init": "npm install --development",
+    "compile": "npx hardhat compile",
+    "test": "npx hardhat test",
+    "node": "npx hardhat node",
+    "serve": "npx hardhat run scripts/deploy.ts --network goerli",
+    "build": "npm run init && npm run compile",
+    "remain": "npm run init",
+    "deploy": "npm run build && npm run serve"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^2.0.2",
+    "hardhat": "^2.13.0"
+  },
+  "dependencies": {
+    "@metamask/sdk": "^0.1.0",
+    "dotenv": "^16.0.3"
+  }
+}

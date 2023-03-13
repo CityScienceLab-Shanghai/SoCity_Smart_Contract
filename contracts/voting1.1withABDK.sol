@@ -1,6 +1,6 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.7;
-import "./ABDKMathQuad.sol";
+import "library/ABDKMathQuad.sol";
 
 contract vote{
     
