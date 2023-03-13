@@ -45,7 +45,7 @@ contract vote{
         int cycling;
 
     }
-
+    //此处六种出行方式需要改变成五种
     //根据address来得到不同的Voter
     mapping(address => Voter) public voters;
     //address public chairperson;
