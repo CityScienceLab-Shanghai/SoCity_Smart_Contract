@@ -2,7 +2,7 @@
 pragma solidity ^0.8.7;
 import "./library/ABDKMathQuad.sol";//引入ABDK库
 
-contract vote{
+contract vote_original{
     
     int car_cost = 192; //g/km
     int moto_cycle_cost = 103; //g/km
