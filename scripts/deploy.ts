@@ -22,7 +22,7 @@ async function deploy_vote(){
   const [deployer] = await ethers.getSigners();
   console.log("Deploying contracts with the account", deployer.address);
 
-  const Vote = await ethers.getContractFactory("vote_original");
+  const Vote = await ethers.getContractFactory("VoteMVP");
   const vote = await Vote.deploy();
 
   console.log("Vote address:", vote.address); //部署之后更新的address
