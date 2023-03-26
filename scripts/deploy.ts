@@ -25,8 +25,15 @@ async function deploy_vote(){
   const Vote = await ethers.getContractFactory("VoteMVP");
   const vote = await Vote.deploy();
 
+  const Library = await ethers.getContractFactory("ABDKMathQuad");
+  const library = await Library.deploy();
+
   console.log("Vote address:", vote.address); //部署之后更新的address
-  fs.writeFileSync('./../artifacts/contracts/Vote.sol/address.txt', vote.address); //写入address文件
+  fs.writeFileSync('./../artifacts/contracts/VoteMVP.sol/address.txt', vote.address); //VoteMVP 写入address文件
+
+  //是否需要部署library？
+  console.log("Vote address:", library.address); //部署之后更新的libray address
+  fs.writeFileSync('./../artifacts/contracts/VoteMVP.sol/address.txt', library.address); //Library 写入address文件
 }
 
 
