@@ -292,7 +292,7 @@ contract VoteMVP{
 
 
     //每四周，每半年进行target_allowance的一次更新
-    function UpateUsersTargetAllowance(Voter memory _voter) public pure{
+    function UpateUsersTargetAllowance(Voter storage _voter) internal{
         int updateCarbonAllowance = 0;
         if(_voter.round == 4){
             //获得该用户这四周的carbonEmission
@@ -347,4 +347,3 @@ contract VoteMVP{
     //user1: r4: [100,23,2,11,20,90], [78,5,2,3,6,6]
     //user2: r4: [40,30,32,60,22,12], [20,10,10,50,4,6]
     //user3: r4: [98,2,2,60,2,3], [80,0,2,10,4,4]
-
